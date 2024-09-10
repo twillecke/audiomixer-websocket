@@ -8,7 +8,7 @@
  * Example usage with wscat:
  * - Connect: wscat -c ws://localhost:8080
  * - Initialize settings: {"type":"INITIALIZE_VOLUME_SETTINGS","data":{"UIStop":0.5,"UIStart":0.5}}
- * - Set volume: {"type":"SET_VOLUME","data":{"trackName":"UIStop","volume":0.35}}
+ * - Set volume: {"type":"SET_VOLUME","data":{"key":"boost_button","volume":0.35}}
  */
 
 import WebSocket from 'ws';
@@ -22,8 +22,14 @@ const CustomEventTypes = {
 };
 const WS_PORT = 8080;
 const wsServer = new WebSocket.Server({ port: WS_PORT });
-// let bootedVolumeSettings: any = {};
-let bootedVolumeSettings: any = [
+
+type VolumeSetting = {
+  key: string;
+  volume: number;
+  fader: string;
+}
+
+let bootedVolumeSettings: Array<VolumeSetting> = [
   {
     key: "boost_button",
     volume: 1,
@@ -70,10 +76,12 @@ function handleCustomEvent(event: keyof typeof CustomEventTypes, data: any) {
           throw new Error('Server volume settings are not initialized. Please initialize settings)');
         }
         if (!data) return;
-        const { trackName, volume } = data;
-        updateVolume(bootedVolumeSettings, trackName, volume);
+        const { key, volume } = data;
+        updateVolume(bootedVolumeSettings, key, volume);
         console.log(`[UPDATED STATE] settings: bootedVolumeSettings`, bootedVolumeSettings);
-        const message = JSON.stringify({ type: CustomEventTypes.UPDATED_VOLUME_SETTINGS, data: { trackName: trackName, volume: volume } });
+
+
+        const message = (JSON.stringify({ type: CustomEventTypes.SERVER_STATE, data: { bootedVolumeSettings } }));
         broadcastMessage(message);
       } catch (error) {
         console.log(`[ERROR] ${(error as Error).message}`);
@@ -112,21 +120,26 @@ function broadcastMessage(message: string) {
 /**
  * Recursevely finds and updates the volume of a specific track in the settings object.
  */
-function updateVolume(settings: any, trackName: string, volume: number) {
+function updateVolume(settings: Array<VolumeSetting>, key: string, volume: number) {
   let found = false;
 
-  function recursiveUpdate(settings: any) {
-    Object.keys(settings).forEach((key) => {
-      if (key === trackName) {
-        settings[key] = volume;
+  function recursiveUpdate(settings: Array<VolumeSetting>) {
+    const newSettings = settings.map((item) => {
+      if (item.key === key) {
         found = true;
-      } else if (typeof settings[key] === 'object' && settings[key] !== null) {
-        recursiveUpdate(settings[key]);
+        return {
+          ...item,
+          key,
+          volume,
+        }
+      } else {
+        return item;
       }
     });
+    bootedVolumeSettings = newSettings;
   }
   recursiveUpdate(settings);
   if (!found) {
-    throw new Error(`Track name "${trackName}" not found`);
+    throw new Error(`Key "${key}" not found`);
   }
 }
