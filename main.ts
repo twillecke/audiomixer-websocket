@@ -8,7 +8,7 @@
  * Example usage with wscat:
  * - Connect: wscat -c ws://localhost:8080
  * - Initialize settings: {"type":"INITIALIZE_VOLUME_SETTINGS","data":{"UIStop":0.5,"UIStart":0.5}}
- * - Set volume: {"type":"SET_VOLUME","data":{"key":"boost_button","volume":0.35}}
+ * - Set volume: {"type":"SET_VOLUME","data":{"audioKey":"boost_button","faderVolume":0.35}}
  */
 
 import WebSocket from 'ws';
@@ -24,21 +24,28 @@ const WS_PORT = 8080;
 const wsServer = new WebSocket.Server({ port: WS_PORT });
 
 type VolumeSetting = {
-  key: string;
-  volume: number;
-  fader: string;
+  audioKey: string;
+  faderVolume: number;
+  group: string;
 }
 
-let bootedVolumeSettings: Array<VolumeSetting> = [
+type EventData = Array<VolumeSetting>;
+
+let bootedVolumeSettings: EventData = [
   {
-    key: "boost_button",
-    volume: 1,
-    fader: "UI",
+    audioKey: "boost_button",
+    faderVolume: 1,
+    group: "UI",
   },
   {
-    key: "spin_button",
-    volume: 0.6,
-    fader: "UI",
+    audioKey: "spin_button",
+    faderVolume: 0.6,
+    group: "UI",
+  },
+  {
+    audioKey: "main_game_background",
+    faderVolume: 1,
+    group: "Music",
   },
 ];
 
@@ -63,8 +70,11 @@ function handleCustomEvent(event: keyof typeof CustomEventTypes, data: any) {
     case CustomEventTypes.INIT_VOLUME_SETTINGS:
       console.log(`[EVENT] ${event}`);
       try {
+        // console.log(`[INIT] volume settings: ${JSON.stringify(bootedVolumeSettings, null, '\t')}`);
         bootedVolumeSettings = data;
-        console.log(`[INIT] volume settings: ${JSON.stringify(bootedVolumeSettings, null, '\t')}`);
+        console.log(`[INIT] volume settings: ${JSON.stringify(data, null, '\t')}`)
+        const message = (JSON.stringify({ type: CustomEventTypes.SERVER_STATE, data: { bootedVolumeSettings } }));
+        broadcastMessage(message);
       } catch (error) {
         console.log(`[ERROR] ${(error as Error).message}`);
       }
@@ -76,8 +86,8 @@ function handleCustomEvent(event: keyof typeof CustomEventTypes, data: any) {
           throw new Error('Server volume settings are not initialized. Please initialize settings)');
         }
         if (!data) return;
-        const { key, volume } = data;
-        updateVolume(bootedVolumeSettings, key, volume);
+        const { audioKey, faderVolume } = data;
+        updateVolume(bootedVolumeSettings, audioKey, faderVolume);
         console.log(`[UPDATED STATE] settings: bootedVolumeSettings`, bootedVolumeSettings);
 
 
@@ -120,17 +130,17 @@ function broadcastMessage(message: string) {
 /**
  * Recursevely finds and updates the volume of a specific track in the settings object.
  */
-function updateVolume(settings: Array<VolumeSetting>, key: string, volume: number) {
+function updateVolume(settings: Array<VolumeSetting>, audioKey: string, faderVolume: number) {
   let found = false;
 
   function recursiveUpdate(settings: Array<VolumeSetting>) {
     const newSettings = settings.map((item) => {
-      if (item.key === key) {
+      if (item.audioKey === audioKey) {
         found = true;
         return {
           ...item,
-          key,
-          volume,
+          audioKey,
+          faderVolume,
         }
       } else {
         return item;
@@ -140,6 +150,6 @@ function updateVolume(settings: Array<VolumeSetting>, key: string, volume: numbe
   }
   recursiveUpdate(settings);
   if (!found) {
-    throw new Error(`Key "${key}" not found`);
+    throw new Error(`AudioKey "${audioKey}" not found`);
   }
 }
